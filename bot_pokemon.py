@@ -6,7 +6,7 @@ from playwright.async_api import async_playwright
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
 TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
 
-# Elenco esatto delle tue carte con nome personalizzato e filtri (Italia/Italiano)
+# Elenco completo delle 20 carte con i link corretti per Italia e venditori italiani
 CARDS = {
     "Pikachu ex Giorno": "https://www.cardmarket.com/it/Pokemon/Products/Singles/30th-Celebration/Pikachu-ex-V2-30C149?sellerCountry=17&language=5",
     "Pikachu ex Notte": "https://www.cardmarket.com/it/Pokemon/Products/Singles/30th-Celebration/Pikachu-ex-V2-30C150?sellerCountry=17&language=5",
@@ -39,8 +39,11 @@ async def scrape_card(page, name, url):
     try:
         await page.goto(url, wait_until="domcontentloaded", timeout=30000)
         
-        # Estrazione del prezzo minimo disponibile nella tabella offerte
-        price_element = await page.query_selector(".table-body .price-container span")
+        # Estrae il prezzo della prima offerta disponibile in tabella
+        price_element = await page.query_selector("div.table-body div.row:first-child div.col-price")
+        if not price_element:
+            price_element = await page.query_selector(".price-container")
+            
         price = await price_element.inner_text() if price_element else "N/D"
         
         return f"🔹 *{name}*: {price.strip()}"
@@ -48,7 +51,7 @@ async def scrape_card(page, name, url):
         return f"⚠️ *{name}*: Errore nel recupero dati"
 
 async def main():
-    send_telegram("🔍 *Avvio scansione prezzi Cardmarket (Carte 30th IT)...*")
+    send_telegram("🔍 *Avvio scansione prezzi Cardmarket (Italia)...*")
     
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True)
@@ -61,11 +64,11 @@ async def main():
         for name, url in CARDS.items():
             res = await scrape_card(page, name, url)
             results.append(res)
-            await asyncio.sleep(2)  # Pausa precauzionale tra le richieste
+            await asyncio.sleep(2)  # Pausa per evitare blocchi
             
         await browser.close()
         
-    report = "📊 *REPORT PREZZI MINIMI CARDMARKET*\n\n" + "\n".join(results)
+    report = "📊 *REPORT PREZZI MINIMI ITALIA*\n\n" + "\n".join(results)
     send_telegram(report)
 
 if __name__ == "__main__":
