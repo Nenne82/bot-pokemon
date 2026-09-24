@@ -2,3 +2,4 @@
 python-telegram-bot
 curl_cffi
 beautifulsoup4
+flask
