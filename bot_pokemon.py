@@ -1,7 +1,7 @@
 import os
-import asyncio
+import time
 import requests
-from playwright.async_api import async_playwright
+from bs4 import BeautifulSoup
 
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
 TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
@@ -34,41 +34,39 @@ def send_telegram(message):
     payload = {"chat_id": TELEGRAM_CHAT_ID, "text": message, "parse_mode": "Markdown"}
     requests.post(url, json=payload)
 
-async def scrape_card(page, name, url):
+def scrape_card(name, url):
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    }
     try:
-        await page.goto(url, wait_until="networkidle", timeout=40000)
-        
-        # Aspetta che compaia la tabella delle offerte e prende la prima cella del prezzo
-        price_selector = "div.table-body div.row div.col-price"
-        await page.wait_for_selector(price_selector, timeout=10000)
-        
-        price_element = await page.query_selector(price_selector)
-        price = await price_element.inner_text() if price_element else "N/D"
-        
-        return f"🔹 *{name}*: {price.strip()}"
-    except Exception as e:
-        return f"⚠️ *{name}*: N/D"
-
-async def main():
-    send_telegram("🔍 *Avvio scansione prezzi definitivi...*")
-    
-    async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=True)
-        context = await browser.new_context(
-            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-        )
-        page = await context.new_page()
-        
-        results = []
-        for name, url in CARDS.items():
-            res = await scrape_card(page, name, url)
-            results.append(res)
-            await asyncio.sleep(3)
+        response = requests.get(url, headers=headers, timeout=15)
+        if response.status_code != 200:
+            return f"🔹 *{name}*: N/D"
             
-        await browser.close()
+        soup = BeautifulSoup(response.text, 'html.parser')
+        
+        # Individua il primo prezzo nella tabella delle offerte
+        price_div = soup.select_one("div.table-body div.row div.col-price")
+        if price_div:
+            price = price_div.get_text(strip=True)
+        else:
+            price = "N/D"
+            
+        return f"🔹 *{name}*: {price}"
+    except Exception:
+        return f"🔹 *{name}*: N/D"
+
+def main():
+    send_telegram("🔍 *Avvio scansione rapida Cardmarket (Italia)...*")
+    
+    results = []
+    for name, url in CARDS.items():
+        res = scrape_card(name, url)
+        results.append(res)
+        time.sleep(1)  # Piccola pausa rispettosa tra una richiesta e l'altra
         
     report = "📊 *REPORT PREZZI MINIMI ITALIA*\n\n" + "\n".join(results)
     send_telegram(report)
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()
