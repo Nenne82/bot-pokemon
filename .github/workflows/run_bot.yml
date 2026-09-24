@@ -2,8 +2,8 @@ name: Run Pokemon Bot
 
 on:
   schedule:
-    - cron: '0 9 * * *' # Gira tutti i giorni alle 09:00 UTC
-  workflow_dispatch: # Ti permette di avviarlo a mano quando vuoi con un click
+    - cron: '0 9 * * *'
+  workflow_dispatch:
 
 jobs:
   run-bot:
@@ -20,8 +20,7 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install requests playwright
-          playwright install chromium
+          pip install requests beautifulsoup4
 
       - name: Run script
         env:
