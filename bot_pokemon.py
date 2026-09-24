@@ -1,7 +1,7 @@
 import os
-import time
+import asyncio
 import requests
-from bs4 import BeautifulSoup
+from playwright.async_api import async_playwright
 
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
 TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
@@ -34,39 +34,47 @@ def send_telegram(message):
     payload = {"chat_id": TELEGRAM_CHAT_ID, "text": message, "parse_mode": "Markdown"}
     requests.post(url, json=payload)
 
-def scrape_card(name, url):
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-    }
+async def scrape_card(page, name, url):
     try:
-        response = requests.get(url, headers=headers, timeout=15)
-        if response.status_code != 200:
-            return f"🔹 *{name}*: N/D"
-            
-        soup = BeautifulSoup(response.text, 'html.parser')
+        # Naviga e attende che la pagina sia completamente caricata
+        await page.goto(url, wait_until="domcontentloaded", timeout=40000)
         
-        # Individua il primo prezzo nella tabella delle offerte
-        price_div = soup.select_one("div.table-body div.row div.col-price")
-        if price_div:
-            price = price_div.get_text(strip=True)
-        else:
-            price = "N/D"
-            
-        return f"🔹 *{name}*: {price}"
-    except Exception:
+        # Attende esplicitamente che compaia la tabella dei venditori
+        await page.wait_for_selector("div.table-body", timeout=10000)
+        
+        # Prende il prezzo della prima offerta disponibile
+        price_element = await page.query_selector("div.table-body div.row:first-child div.col-price")
+        price = await price_element.inner_text() if price_element else "N/D"
+        
+        return f"🔹 *{name}*: {price.strip()}"
+    except Exception as e:
         return f"🔹 *{name}*: N/D"
 
-def main():
-    send_telegram("🔍 *Avvio scansione rapida Cardmarket (Italia)...*")
+async def main():
+    send_telegram("🔍 *Avvio scansione Cardmarket (Modalità Stealth)...*")
     
-    results = []
-    for name, url in CARDS.items():
-        res = scrape_card(name, url)
-        results.append(res)
-        time.sleep(1)  # Piccola pausa rispettosa tra una richiesta e l'altra
+    async with async_playwright() as p:
+        # Avviamo Chromium con argomenti per evitare il rilevamento anti-bot
+        browser = await p.chromium.launch(
+            headless=True,
+            args=["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage", "--disable-blink-features=AutomationControlled"]
+        )
+        context = await browser.new_context(
+            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+            viewport={"width": 1280, "height": 800}
+        )
+        page = await context.new_page()
+        
+        results = []
+        for name, url in CARDS.items():
+            res = await scrape_card(page, name, url)
+            results.append(res)
+            await asyncio.sleep(2)  # Pausa per simulare navigazione umana
+            
+        await browser.close()
         
     report = "📊 *REPORT PREZZI MINIMI ITALIA*\n\n" + "\n".join(results)
     send_telegram(report)
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())
