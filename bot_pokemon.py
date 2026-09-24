@@ -6,7 +6,6 @@ from playwright.async_api import async_playwright
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
 TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
 
-# Elenco completo delle 20 carte con i link corretti per Italia e venditori italiani
 CARDS = {
     "Pikachu ex Giorno": "https://www.cardmarket.com/it/Pokemon/Products/Singles/30th-Celebration/Pikachu-ex-V2-30C149?sellerCountry=17&language=5",
     "Pikachu ex Notte": "https://www.cardmarket.com/it/Pokemon/Products/Singles/30th-Celebration/Pikachu-ex-V2-30C150?sellerCountry=17&language=5",
@@ -37,21 +36,21 @@ def send_telegram(message):
 
 async def scrape_card(page, name, url):
     try:
-        await page.goto(url, wait_until="domcontentloaded", timeout=30000)
+        await page.goto(url, wait_until="networkidle", timeout=40000)
         
-        # Estrae il prezzo della prima offerta disponibile in tabella
-        price_element = await page.query_selector("div.table-body div.row:first-child div.col-price")
-        if not price_element:
-            price_element = await page.query_selector(".price-container")
-            
+        # Aspetta che compaia la tabella delle offerte e prende la prima cella del prezzo
+        price_selector = "div.table-body div.row div.col-price"
+        await page.wait_for_selector(price_selector, timeout=10000)
+        
+        price_element = await page.query_selector(price_selector)
         price = await price_element.inner_text() if price_element else "N/D"
         
         return f"🔹 *{name}*: {price.strip()}"
     except Exception as e:
-        return f"⚠️ *{name}*: Errore nel recupero dati"
+        return f"⚠️ *{name}*: N/D"
 
 async def main():
-    send_telegram("🔍 *Avvio scansione prezzi Cardmarket (Italia)...*")
+    send_telegram("🔍 *Avvio scansione prezzi definitivi...*")
     
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True)
@@ -64,7 +63,7 @@ async def main():
         for name, url in CARDS.items():
             res = await scrape_card(page, name, url)
             results.append(res)
-            await asyncio.sleep(2)  # Pausa per evitare blocchi
+            await asyncio.sleep(3)
             
         await browser.close()
         
